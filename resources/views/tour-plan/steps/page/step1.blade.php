@@ -751,8 +751,8 @@
                             </div>
                             <div class="preference-grid">
                                 <!-- Alcoholic Beverages -->
-                                <label class="preference-card">
-                                    <input type="radio" name="beverage_preference" value="alcoholic">
+                                <label class="preference-card" onclick="beverage_preference('alcoholic')">
+                                    <input type="radio" name="beverage_preference" value="alcoholic" class="beverage-radio">
                                     <img src="{{ asset('images/dining/alcoholic.jpg') }}" alt="Alcoholic Beverages" class="card-image" onerror="this.src='https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=500&auto=format&fit=crop&q=60'">
                                     <div class="check-icon">
                                         <i class="bi bi-check"></i>
@@ -762,8 +762,8 @@
                                 </label>
 
                                 <!-- Non-Alcoholic -->
-                                <label class="preference-card">
-                                    <input type="radio" name="beverage_preference" value="non_alcoholic">
+                                <label class="preference-card" onclick="beverage_preference('non_alcoholic')">
+                                    <input type="radio" name="beverage_preference" value="non_alcoholic" class="beverage-radio">
                                     <img src="{{ asset('images/dining/non-alcoholic.jpg') }}" alt="Non-Alcoholic Beverages" class="card-image" onerror="this.src='https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=500&auto=format&fit=crop&q=60'">
                                     <div class="check-icon">
                                         <i class="bi bi-check"></i>
@@ -790,8 +790,8 @@
                             </div>
                             <div class="preference-grid">
                                 <!-- Vegetarian -->
-                                <label class="preference-card">
-                                    <input type="radio" name="meal_types[]" value="vegetarian">
+                                <label class="preference-card"  onclick="selectMealType('vegetarian')">
+                                    <input type="radio" name="meal_types" value="vegetarian" class="meal-radio">
                                     <img src="{{ asset('images/dining/vegetarian.jpg') }}" alt="Vegetarian Options" class="card-image" onerror="this.src='https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=500&auto=format&fit=crop&q=60'">
                                     <div class="check-icon">
                                         <i class="bi bi-check"></i>
@@ -801,8 +801,8 @@
                                 </label>
 
                                 <!-- Non-Vegetarian -->
-                                <label class="preference-card">
-                                    <input  type="radio" name="meal_types[]" value="non_vegetarian">
+                                <label class="preference-card"  onclick="selectMealType('non_vegetarian')">
+                                    <input type="radio" name="meal_types" value="non_vegetarian" class="meal-radio">
                                     <img src="{{ asset('images/dining/non-vegetarian.jpg') }}" alt="Non-Vegetarian Options" class="card-image" onerror="this.src='https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&auto=format&fit=crop&q=60'">
                                     <div class="check-icon">
                                         <i class="bi bi-check"></i>
@@ -812,8 +812,8 @@
                                 </label>
 
                                 <!-- Halal -->
-                                <label class="preference-card">
-                                    <input  type="radio" name="meal_types[]" value="halal">
+                                <label class="preference-card" onclick="selectMealType('halal')">
+                                    <input type="radio" name="meal_types" value="halal" class="meal-radio">
                                     <img src="{{ asset('images/dining/halal.jpg') }}" alt="Halal Food" class="card-image" onerror="this.src='https://images.unsplash.com/photo-1563245372-f21724e3856d?w=500&auto=format&fit=crop&q=60'">
                                     <div class="check-icon">
                                         <i class="bi bi-check"></i>
@@ -823,8 +823,8 @@
                                 </label>
 
                                 <!-- Mixed Options -->
-                                <label class="preference-card">
-                                    <input  type="radio" name="meal_types[]" value="mixed">
+                                <label class="preference-card"  onclick="selectMealType('mixed_options')">
+                                    <input type="radio" name="meal_types" value="mixed" class="meal-radio">
                                     <img src="{{ asset('images/dining/mixed.jpg') }}" alt="Mixed Options" class="card-image" onerror="this.src='https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=500&auto=format&fit=crop&q=60'">
                                     <div class="check-icon">
                                         <i class="bi bi-check"></i>
@@ -958,6 +958,9 @@
                     </div>
                 </div>
 
+                <input type="hidden" name="meal_type_text" id="meal_type_text">
+                <input type="hidden" name="beverage_preference_text" id="beverage_preference_text">
+
                 <!-- Submit Button -->
                 <div class="col-12 text-end">
                     <button type="submit" class="btn btn-primary">Continue to Tour Schedule</button>
@@ -968,6 +971,16 @@
 </div>
 
 <script>
+    function selectMealType(type) {
+        const startInput = document.getElementById('meal_type_text');
+        startInput.value = type;
+    }
+
+    function beverage_preference(type) {
+        const startInput = document.getElementById('beverage_preference_text');
+        startInput.value = type;
+    }
+
     let startAutocomplete = null;
     let endAutocomplete = null;
     let returnAutocomplete = null;

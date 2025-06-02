@@ -37,6 +37,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/tour-plan/create', [\App\Http\Controllers\TourPlanController::class, 'create'])->name('tourplan.create');
     Route::post('/tour-plan/create', [\App\Http\Controllers\TourPlanController::class, 'createTourPlan'])->name('tourplan.store');
 
+    Route::get('/tour-plan/{tourId}/select-routes', [\App\Http\Controllers\TourPlanController::class, 'selectRoute'])->name('tourplan.select-route');
+
     Route::prefix('tour-plans')->group(function () {
         Route::post('/', [TourPlanController::class, 'store'])->name('tour-plans.store');
         Route::get('/{tourPlan}', [TourPlanController::class, 'show'])->name('tour-plans.show');

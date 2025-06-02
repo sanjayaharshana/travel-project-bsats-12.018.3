@@ -15,6 +15,29 @@ class TourPlanController extends Controller
         return view('tour-plan.create');
     }
 
+    public function selectRoute(Request $request, $tourId)
+    {
+        $travelPlan = TourPlan::findOrFail($tourId);
+
+        $tourDetails = [
+            'start_location' => [
+                'latitude' => $travelPlan->start_location['lat'] ,
+                'longitude' => $travelPlan->start_location['lng'],
+                'name' => 'Start Location Name'
+            ],
+            'end_location' => [
+                'latitude' => $travelPlan->end_location['lat'],
+                'longitude' =>  $travelPlan->end_location['lng'],
+                'name' => 'End Location Name'
+            ]
+        ];
+
+        return view('tour-plan.select-route', [
+            'tourId' => $tourId,
+            'tourDetails' => $tourDetails,
+        ]);
+    }
+
     public function createTourPlan(Request $request)
     {
         // Validate the request
@@ -34,9 +57,8 @@ class TourPlanController extends Controller
             'adult_count' => 'required|integer|min:1',
             'child_count' => 'required|integer|min:0',
             'infant_count' => 'required|integer|min:0',
-            'beverage_preference' => ['nullable', Rule::in(['alcoholic', 'non_alcoholic'])],
-            'meal_types' => 'nullable|array',
-            'meal_types.*' => ['string', Rule::in(['vegetarian', 'non_vegetarian', 'halal', 'mixed'])],
+            'beverage_preference_text' => ['nullable', Rule::in(['alcoholic', 'non_alcoholic'])],
+            'meal_type_text' => ['nullable', Rule::in(['vegetarian', 'non_vegetarian', 'halal', 'mixed'])],
             'budget' => 'required|numeric|min:0',
             'budget_type' => ['required', Rule::in(['luxury', 'medium', 'emergency'])],
             'location_types' => 'nullable|array',
@@ -96,8 +118,8 @@ class TourPlanController extends Controller
                 'child_count' => $request->child_count,
                 'infant_count' => $request->infant_count,
                 'total_group_size' => $totalGroupSize,
-                'beverage_preference' => $request->beverage_preference,
-                'meal_types' => $request->meal_types,
+                'beverage_preference' => $request->beverage_preference_text,
+                'meal_types' => [$request->meal_type_text],
                 'budget' => $request->budget,
                 'budget_type' => $request->budget_type,
                 'location_types' => $request->location_types,
@@ -109,111 +131,20 @@ class TourPlanController extends Controller
                 ]
             ]);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Tour plan created successfully',
-                'data' => [
-                    'tour_plan_id' => $tourPlan->id,
-                    'uuid' => $tourPlan->uuid,
-                    'next_step' => 2
-                ]
-            ], 201);
+            return redirect()->route('tourplan.select-route', ['tourId' => $tourPlan->id]);
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to create tour plan',
-                'error' => $e->getMessage()
-            ], 500);
+           return back()
+            ->withErrors(['error' => 'Failed to create tour plan: ' . $e->getMessage()])
+            ->withInput();
         }
     }
 
-    public function store(Request $request)
-    {
 
-    }
 
-    public function update(Request $request, TourPlan $tourPlan)
-    {
-        // Check if tour plan is editable
-        if (!$tourPlan->isEditable()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'This tour plan cannot be edited'
-            ], 403);
-        }
 
-        // Similar validation and update logic as store method
-        // Add specific update logic here
-    }
 
-    public function show(TourPlan $tourPlan)
-    {
-        return response()->json([
-            'success' => true,
-            'data' => $tourPlan->load(['shop', 'user', 'guest'])
-        ]);
-    }
 
-    public function updateStep(Request $request, TourPlan $tourPlan)
-    {
-        $validator = Validator::make($request->all(), [
-            'step' => 'required|integer|min:1|max:5',
-            'data' => 'required|array'
-        ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
 
-        try {
-            $tourPlan->updateProgress($request->step, $request->data);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Tour plan progress updated successfully',
-                'data' => [
-                    'current_step' => $tourPlan->current_step,
-                    'next_step' => $request->step + 1
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to update tour plan progress',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    public function cancel(TourPlan $tourPlan)
-    {
-        if (!$tourPlan->isEditable()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'This tour plan cannot be cancelled'
-            ], 403);
-        }
-
-        try {
-            $tourPlan->update(['status' => 'cancelled']);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Tour plan cancelled successfully'
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to cancel tour plan',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
 }
