@@ -238,7 +238,7 @@ function processTourLocations() {
     locations.push({
         lat: parseFloat(tourDetails.start_location.latitude),
         lng: parseFloat(tourDetails.start_location.longitude),
-        name: tourDetails.start_location.name || 'Start Location',
+        name: tourDetails.start_location.name,
         type: 'start'
     });
 
@@ -247,7 +247,7 @@ function processTourLocations() {
         locations.push({
             lat: parseFloat(tourDetails.return_location.latitude),
             lng: parseFloat(tourDetails.return_location.longitude),
-            name: tourDetails.return_location.name || 'Return Location',
+            name: tourDetails.return_location.name,
             type: 'return'
         });
     }
@@ -256,9 +256,26 @@ function processTourLocations() {
     locations.push({
         lat: parseFloat(tourDetails.end_location.latitude),
         lng: parseFloat(tourDetails.end_location.longitude),
-        name: tourDetails.end_location.name || 'End Location',
+        name: tourDetails.end_location.name,
         type: 'end'
     });
+
+    // Add suggested route locations if available
+    if (tourDetails.suggested_routes && tourDetails.suggested_routes.length > 0) {
+        tourDetails.suggested_routes.forEach((route, routeIndex) => {
+            route.places.forEach((place, placeIndex) => {
+                locations.push({
+                    lat: parseFloat(place.coordinates.lat),
+                    lng: parseFloat(place.coordinates.lng),
+                    name: place.name,
+                    type: 'suggested',
+                    routeIndex: routeIndex,
+                    placeIndex: placeIndex,
+                    routeName: route.route_name
+                });
+            });
+        });
+    }
 }
 
 async function addLocationMarkers(AdvancedMarkerElement) {
@@ -454,22 +471,43 @@ function generateRouteCombinations() {
         description: 'Direct Route'
     });
 
-    // If we have intermediate locations, generate combinations
-    if (locations.length > 2) {
-        const intermediatePoints = locations.slice(1, -1);
-        
-        // Generate all possible permutations of intermediate points
-        const permutations = getPermutations(intermediatePoints);
-        
-        // Add each permutation as a route combination
-        permutations.forEach(permutation => {
+    // If we have suggested routes, add them as combinations
+    if (tourDetails.suggested_routes && tourDetails.suggested_routes.length > 0) {
+        tourDetails.suggested_routes.forEach((route, routeIndex) => {
+            const waypoints = route.places.map(place => ({
+                lat: parseFloat(place.coordinates.lat),
+                lng: parseFloat(place.coordinates.lng),
+                name: place.name,
+                type: 'suggested'
+            }));
+
             combinations.push({
                 origin: start,
                 destination: end,
-                waypoints: permutation,
-                description: `Via ${permutation.map(p => p.name).join(' → ')}`
+                waypoints: waypoints,
+                description: route.route_name
             });
         });
+    }
+
+    // If we have intermediate locations (like return location), generate combinations
+    if (locations.length > 2) {
+        const intermediatePoints = locations.slice(1, -1).filter(loc => loc.type !== 'suggested');
+        
+        if (intermediatePoints.length > 0) {
+            // Generate all possible permutations of intermediate points
+            const permutations = getPermutations(intermediatePoints);
+            
+            // Add each permutation as a route combination
+            permutations.forEach(permutation => {
+                combinations.push({
+                    origin: start,
+                    destination: end,
+                    waypoints: permutation,
+                    description: `Via ${permutation.map(p => p.name).join(' → ')}`
+                });
+            });
+        }
     }
 
     return combinations;
@@ -510,7 +548,12 @@ function displayRouteAlternatives(results, travelMode) {
     Object.entries(groupedRoutes).forEach(([baseDescription, routes], groupIndex) => {
         const groupDiv = document.createElement('div');
         groupDiv.className = 'route-group';
-        groupDiv.innerHTML = `<h5 class="route-group-title">${baseDescription}</h5>`;
+        
+        // Check if this is a suggested route
+        const isSuggestedRoute = tourDetails.suggested_routes?.some(r => r.route_name === baseDescription);
+        const groupTitleClass = isSuggestedRoute ? 'route-group-title suggested' : 'route-group-title';
+        
+        groupDiv.innerHTML = `<h5 class="${groupTitleClass}">${baseDescription}</h5>`;
 
         routes.forEach(({route, description, type}, index) => {
             const routeDiv = document.createElement('div');
@@ -527,7 +570,7 @@ function displayRouteAlternatives(results, travelMode) {
                 totalDuration += leg.duration.value;
             });
 
-            const routeColor = getRouteColor(groupIndex);
+            const routeColor = getRouteColor(groupIndex, isSuggestedRoute ? 'suggested' : 'default');
             
             routeDetails.innerHTML = `
                 <div class="route-mode" style="border-left: 4px solid ${routeColor}">
@@ -540,7 +583,7 @@ function displayRouteAlternatives(results, travelMode) {
             `;
 
             routeDiv.appendChild(routeDetails);
-            routeDiv.onclick = () => showRoute(route, travelMode, groupIndex, description);
+            routeDiv.onclick = () => showRoute(route, travelMode, groupIndex, description, isSuggestedRoute);
             groupDiv.appendChild(routeDiv);
         });
 
@@ -563,7 +606,7 @@ function formatDuration(seconds) {
     return `${minutes} min`;
 }
 
-function showRoute(route, travelMode, routeIndex, description) {
+function showRoute(route, travelMode, routeIndex, description, isSuggestedRoute) {
     event.stopPropagation();
     
     // Clear previous routes and markers
@@ -577,7 +620,7 @@ function showRoute(route, travelMode, routeIndex, description) {
         map: map,
         suppressMarkers: true, // We'll use our custom markers
         polylineOptions: {
-            strokeColor: getRouteColor(routeIndex),
+            strokeColor: getRouteColor(routeIndex, isSuggestedRoute ? 'suggested' : 'default'),
             strokeWeight: 5,
             strokeOpacity: 0.8
         },
@@ -723,18 +766,25 @@ function highlightRouteMarkers(route) {
     });
 }
 
-function getRouteColor(index) {
-    const colors = [
-        '#007bff', // Blue
+function getRouteColor(index, type) {
+    const suggestedColors = [
         '#28a745', // Green
-        '#dc3545', // Red
-        '#ffc107', // Yellow
         '#17a2b8', // Cyan
         '#6610f2', // Purple
-        '#fd7e14', // Orange
+        '#fd7e14'  // Orange
+    ];
+
+    const defaultColors = [
+        '#007bff', // Blue
+        '#dc3545', // Red
+        '#ffc107', // Yellow
         '#20c997'  // Teal
     ];
-    return colors[index % colors.length];
+
+    if (type === 'suggested') {
+        return suggestedColors[index % suggestedColors.length];
+    }
+    return defaultColors[index % defaultColors.length];
 }
 
 // Load Google Maps API when the page loads
@@ -756,6 +806,10 @@ styleSheet.textContent = `
         border-bottom: 2px solid #007bff;
         color: #007bff;
     }
+    .route-group-title.suggested {
+        color: #28a745;
+        border-bottom-color: #28a745;
+    }
     .route-option {
         margin: 5px 0;
     }
@@ -764,6 +818,15 @@ styleSheet.textContent = `
     }
     .route-option.active {
         background: #e9ecef;
+    }
+    .route-option.suggested {
+        border-left: 4px solid #28a745;
+    }
+    .route-option.suggested:hover {
+        background: #e8f5e9;
+    }
+    .route-option.suggested.active {
+        background: #c8e6c9;
     }
 `;
 document.head.appendChild(styleSheet);

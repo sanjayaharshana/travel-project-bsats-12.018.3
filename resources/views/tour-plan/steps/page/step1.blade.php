@@ -1,5 +1,32 @@
 @include('tour-plan.steps.wizard-step-indicator',['step'  => 1])
 <script src="https://maps.googleapis.com/maps/api/js?key={{ config('services.google.maps_api_key') }}&libraries=places&callback=initAutocomplete" async defer></script>
+
+<!-- Add Flash Messages -->
+@if(session('success'))
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        {{ session('success') }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+@endif
+
+@if(session('error'))
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        {{ session('error') }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+@endif
+
+@if($errors->any())
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <ul class="mb-0">
+            @foreach($errors->all() as $error)
+                <li>{{ $error }}</li>
+            @endforeach
+        </ul>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+@endif
+
 <style>
     .autocomplete-container {
         margin: 20px;
@@ -450,8 +477,8 @@
     <!-- Step 1 Content -->
     <div class="step-content active" id="step1">
         <div class="row g-4">
-            <form id="tourPlanForm" class="needs-validation" action="#" method="POST" novalidate>
-                {{csrf_field()}}
+            <form id="tourPlanForm" class="needs-validation" action="{{ route('tourplan.store') }}" method="POST" novalidate>
+                @csrf
                 <!-- Tour Overview -->
                 <div class="col-12 mb-4">
                     <div class="section-card p-4">
@@ -473,11 +500,15 @@
                                 <label for="startDate" class="form-label">Start Date & Time</label>
                                 <div class="date-time-input">
                                     <input type="datetime-local"
-                                           class="form-control"
+                                           class="form-control @error('start_date') is-invalid @enderror"
                                            id="startDate"
                                            name="start_date"
+                                           value="{{ old('start_date') }}"
                                            required>
                                     <i class="bi bi-calendar3 input-icon"></i>
+                                    @error('start_date')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
                                 </div>
                             </div>
 
@@ -486,11 +517,15 @@
                                 <label for="endDate" class="form-label">End Date</label>
                                 <div class="date-time-input">
                                     <input type="date"
-                                           class="form-control"
+                                           class="form-control @error('end_date') is-invalid @enderror"
                                            id="endDate"
                                            name="end_date"
+                                           value="{{ old('end_date') }}"
                                            required>
                                     <i class="bi bi-calendar3 input-icon"></i>
+                                    @error('end_date')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
                                 </div>
                             </div>
 
@@ -530,13 +565,17 @@
                                 <label for="startLocationInput" class="form-label">Pickup Location</label>
                                 <div class="location-input-container">
                                     <input type="text"
-                                           class="form-control location-input"
+                                           class="form-control location-input @error('start_location_name') is-invalid @enderror"
                                            id="startLocationInput"
                                            placeholder="Enter pickup location"
+                                           value="{{ old('start_location_name') }}"
                                            autocomplete="off">
-                                    <input type="hidden" id="startLocationLat" name="start_location_lat">
-                                    <input type="hidden" id="startLocationLng" name="start_location_lng">
-                                    <input type="hidden" id="startLocationName" name="start_location_name">
+                                    <input type="hidden" id="startLocationLat" name="start_location_lat" value="{{ old('start_location_lat') }}">
+                                    <input type="hidden" id="startLocationLng" name="start_location_lng" value="{{ old('start_location_lng') }}">
+                                    <input type="hidden" id="startLocationName" name="start_location_name" value="{{ old('start_location_name') }}">
+                                    @error('start_location_name')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
                                 </div>
                             </div>
                             <!-- End Location -->
@@ -544,13 +583,17 @@
                                 <label for="endLocationInput" class="form-label">Final Destination</label>
                                 <div class="location-input-container">
                                     <input type="text"
-                                           class="form-control location-input"
+                                           class="form-control location-input @error('end_location_name') is-invalid @enderror"
                                            id="endLocationInput"
                                            placeholder="Enter final destination"
+                                           value="{{ old('end_location_name') }}"
                                            autocomplete="off">
-                                    <input type="hidden" id="endLocationLat" name="end_location_lat">
-                                    <input type="hidden" id="endLocationLng" name="end_location_lng">
-                                    <input type="hidden" id="endLocationName" name="end_location_name">
+                                    <input type="hidden" id="endLocationLat" name="end_location_lat" value="{{ old('end_location_lat') }}">
+                                    <input type="hidden" id="endLocationLng" name="end_location_lng" value="{{ old('end_location_lng') }}">
+                                    <input type="hidden" id="endLocationName" name="end_location_name" value="{{ old('end_location_name') }}">
+                                    @error('end_location_name')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
                                 </div>
                             </div>
                         </div>
@@ -576,30 +619,34 @@
                             <div class="col-md-6">
                                 <label class="form-label">Return Type</label>
                                 <div class="form-check mb-2">
-                                    <input class="form-check-input" type="radio" name="return_type" id="returnToPickup" value="pickup" checked>
+                                    <input class="form-check-input" type="radio" name="return_type" id="returnToPickup" value="pickup" {{ old('return_type', 'pickup') == 'pickup' ? 'checked' : '' }}>
                                     <label class="form-check-label" for="returnToPickup">
                                         Return to Pickup Location
                                     </label>
                                 </div>
                                 <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="return_type" id="returnToSpecific" value="specific">
+                                    <input class="form-check-input" type="radio" name="return_type" id="returnToSpecific" value="specific" {{ old('return_type') == 'specific' ? 'checked' : '' }}>
                                     <label class="form-check-label" for="returnToSpecific">
                                         Return to Specific Location
                                     </label>
                                 </div>
                             </div>
                             <!-- Return Location (initially hidden) -->
-                            <div class="col-md-6" id="returnLocationContainer" style="display: none;">
+                            <div class="col-md-6" id="returnLocationContainer" style="display: {{ old('return_type') == 'specific' ? 'block' : 'none' }};">
                                 <label for="returnLocationInput" class="form-label">Return Location</label>
                                 <div class="location-input-container">
                                     <input type="text"
-                                           class="form-control location-input"
+                                           class="form-control location-input @error('return_location_name') is-invalid @enderror"
                                            id="returnLocationInput"
                                            placeholder="Enter return location"
+                                           value="{{ old('return_location_name') }}"
                                            autocomplete="off">
-                                    <input type="hidden" id="returnLocationLat" name="return_location_lat">
-                                    <input type="hidden" id="returnLocationLng" name="return_location_lng">
-                                    <input type="hidden" id="returnLocationName" name="return_location_name">
+                                    <input type="hidden" id="returnLocationLat" name="return_location_lat" value="{{ old('return_location_lat') }}">
+                                    <input type="hidden" id="returnLocationLng" name="return_location_lng" value="{{ old('return_location_lng') }}">
+                                    <input type="hidden" id="returnLocationName" name="return_location_name" value="{{ old('return_location_name') }}">
+                                    @error('return_location_name')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
                                 </div>
                             </div>
                         </div>
@@ -640,7 +687,7 @@
                                                id="adultCount"
                                                name="adult_count"
                                                min="1"
-                                               value="1"
+                                               value="{{ old('adult_count', 1) }}"
                                                required
                                                readonly>
                                         <button type="button" class="group-btn" onclick="increaseCount('adultCount')">
@@ -669,7 +716,7 @@
                                                id="childCount"
                                                name="child_count"
                                                min="0"
-                                               value="0"
+                                               value="{{ old('child_count', 0) }}"
                                                required
                                                readonly>
                                         <button type="button" class="group-btn" onclick="increaseCount('childCount')">
@@ -698,7 +745,7 @@
                                                id="infantCount"
                                                name="infant_count"
                                                min="0"
-                                               value="0"
+                                               value="{{ old('infant_count', 0) }}"
                                                required
                                                readonly>
                                         <button type="button" class="group-btn" onclick="increaseCount('infantCount')">
@@ -846,17 +893,33 @@
                                 <label for="budget" class="form-label">Total Budget</label>
                                 <div class="input-group">
                                     <span class="input-group-text">Rs.</span>
-                                    <input type="number" class="form-control" id="budget" name="budget" min="0" step="1000" required>
+                                    <input type="number" 
+                                           class="form-control @error('budget') is-invalid @enderror" 
+                                           id="budget" 
+                                           name="budget" 
+                                           min="0" 
+                                           step="1000" 
+                                           value="{{ old('budget') }}" 
+                                           required>
+                                    @error('budget')
+                                        <div class="invalid-feedback">{{ $message }}</div>
+                                    @enderror
                                 </div>
                             </div>
                             <div class="col-md-6">
                                 <label for="budgetType" class="form-label">Budget Category</label>
-                                <select class="form-select" id="budgetType" name="budget_type" required>
+                                <select class="form-select @error('budget_type') is-invalid @enderror" 
+                                        id="budgetType" 
+                                        name="budget_type" 
+                                        required>
                                     <option value="">Select budget category</option>
-                                    <option value="luxury">Luxury Tour Package</option>
-                                    <option value="medium">Standard Tour Package</option>
-                                    <option value="emergency">Budget Tour Package</option>
+                                    <option value="luxury" {{ old('budget_type') == 'luxury' ? 'selected' : '' }}>Luxury Tour Package</option>
+                                    <option value="medium" {{ old('budget_type') == 'medium' ? 'selected' : '' }}>Standard Tour Package</option>
+                                    <option value="emergency" {{ old('budget_type') == 'emergency' ? 'selected' : '' }}>Budget Tour Package</option>
                                 </select>
+                                @error('budget_type')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
                             </div>
                         </div>
                     </div>
@@ -882,7 +945,7 @@
                             <div class="preference-grid">
                                 <!-- Nature & Wildlife -->
                                 <label class="preference-card">
-                                    <input type="checkbox" name="location_types[]" value="nature">
+                                    <input type="checkbox" name="location_types[]" value="nature" {{ in_array('nature', old('location_types', [])) ? 'checked' : '' }}>
                                     <img src="{{ asset('images/locations/nature.jpg') }}" alt="Nature & Wildlife" class="card-image" onerror="this.src='https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=500&auto=format&fit=crop&q=60'">
                                     <div class="check-icon">
                                         <i class="bi bi-check"></i>
@@ -893,7 +956,7 @@
 
                                 <!-- Cultural & Heritage -->
                                 <label class="preference-card">
-                                    <input type="checkbox" name="location_types[]" value="cultural">
+                                    <input type="checkbox" name="location_types[]" value="cultural" {{ in_array('cultural', old('location_types', [])) ? 'checked' : '' }}>
                                     <img src="{{ asset('images/locations/cultural.jpg') }}" alt="Cultural & Heritage" class="card-image" onerror="this.src='https://images.unsplash.com/photo-1528181304800-259b08848526?w=500&auto=format&fit=crop&q=60'">
                                     <div class="check-icon">
                                         <i class="bi bi-check"></i>
@@ -904,7 +967,7 @@
 
                                 <!-- Urban & City Life -->
                                 <label class="preference-card">
-                                    <input type="checkbox" name="location_types[]" value="urban">
+                                    <input type="checkbox" name="location_types[]" value="urban" {{ in_array('urban', old('location_types', [])) ? 'checked' : '' }}>
                                     <img src="{{ asset('images/locations/urban.jpg') }}" alt="Urban & City Life" class="card-image" onerror="this.src='https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=500&auto=format&fit=crop&q=60'">
                                     <div class="check-icon">
                                         <i class="bi bi-check"></i>
@@ -915,7 +978,7 @@
 
                                 <!-- Beach & Coastal -->
                                 <label class="preference-card">
-                                    <input type="checkbox" name="location_types[]" value="beach">
+                                    <input type="checkbox" name="location_types[]" value="beach" {{ in_array('beach', old('location_types', [])) ? 'checked' : '' }}>
                                     <img src="{{ asset('images/locations/beach.jpg') }}" alt="Beach & Coastal" class="card-image" onerror="this.src='https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=500&auto=format&fit=crop&q=60'">
                                     <div class="check-icon">
                                         <i class="bi bi-check"></i>
@@ -926,7 +989,7 @@
 
                                 <!-- Adventure & Sports -->
                                 <label class="preference-card">
-                                    <input type="checkbox" name="location_types[]" value="adventure">
+                                    <input type="checkbox" name="location_types[]" value="adventure" {{ in_array('adventure', old('location_types', [])) ? 'checked' : '' }}>
                                     <img src="{{ asset('images/locations/adventure.jpg') }}" alt="Adventure & Sports" class="card-image" onerror="this.src='https://images.unsplash.com/photo-1533105079780-92b9be482077?w=500&auto=format&fit=crop&q=60'">
                                     <div class="check-icon">
                                         <i class="bi bi-check"></i>
@@ -937,7 +1000,7 @@
 
                                 <!-- Wellness & Relaxation -->
                                 <label class="preference-card">
-                                    <input type="checkbox" name="location_types[]" value="wellness">
+                                    <input type="checkbox" name="location_types[]" value="wellness" {{ in_array('wellness', old('location_types', [])) ? 'checked' : '' }}>
                                     <img src="{{ asset('images/locations/wellness.jpg') }}" alt="Wellness & Relaxation" class="card-image" onerror="this.src='https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=500&auto=format&fit=crop&q=60'">
                                     <div class="check-icon">
                                         <i class="bi bi-check"></i>

@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use OpenAI\Laravel\Facades\OpenAI;
+
 
 class TourPlanController extends Controller
 {
@@ -21,18 +23,24 @@ class TourPlanController extends Controller
 
         $tourDetails = [
             'start_location' => [
-                'latitude' => $travelPlan->start_location['lat'] ,
+                'latitude' => $travelPlan->start_location['lat'],
                 'longitude' => $travelPlan->start_location['lng'],
-                'name' => 'Start Location Name'
+                'name' => $travelPlan->start_location['name']
             ],
             'end_location' => [
                 'latitude' => $travelPlan->end_location['lat'],
-                'longitude' =>  $travelPlan->end_location['lng'],
-                'name' => 'End Location Name'
-            ]
+                'longitude' => $travelPlan->end_location['lng'],
+                'name' => $travelPlan->end_location['name']
+            ],
+            'return_location' => $travelPlan->return_location ? [
+                'latitude' => $travelPlan->return_location['lat'],
+                'longitude' => $travelPlan->return_location['lng'],
+                'name' => $travelPlan->return_location['name']
+            ] : null,
+            'suggested_routes' => $travelPlan->progress_data['suggested_routes'] ?? []
         ];
 
-        return view('tour-plan.select-route', [
+        return view('tour-plan.steps.page.step2', [
             'tourId' => $tourId,
             'tourDetails' => $tourDetails,
         ]);
@@ -66,11 +74,11 @@ class TourPlanController extends Controller
         ]);
 
         if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
+            return redirect()
+                ->back()
+                ->withErrors($validator)
+                ->withInput()
+                ->with('error', 'Please correct the errors in the form.');
         }
 
         try {
@@ -104,9 +112,41 @@ class TourPlanController extends Controller
             // Calculate total group size
             $totalGroupSize = $request->adult_count + $request->child_count + $request->infant_count;
 
-            // Create tour plan
+            // Get alternative routes from OpenAI
+            $result = OpenAI::chat()->create([
+                'model' => 'gpt-4',
+                'messages' => [
+                    ['role' => 'user', 'content' => 'Generate alternative travel routes between [Start] and [End] that pass through nearby cities or towns. Provide 2–3 different paths with place names and coordinates. Start: '.$startLocation['name'].', End: '.$endLocation['name'].' Generate json with the following structure: {
+                        "routes": [
+                            {
+                                "route_name": "Route 1",
+                                "places": [
+                                    {"name": "Place A", "coordinates": {"lat": 12.34, "lng": 56.78}},
+                                    {"name": "Place B", "coordinates": {"lat": 23.45, "lng": 67.89}}
+                                ]
+                            },
+                            {
+                                "route_name": "Route 2",
+                                "places": [
+                                    {"name": "Place C", "coordinates": {"lat": 34.56, "lng": 78.90}},
+                                    {"name": "Place D", "coordinates": {"lat": 45.67, "lng": 89.01}}
+                                ]
+                            }
+                        ]
+                    }'],
+                ],
+            ]);
+
+            // Parse the OpenAI response
+            $routesData = json_decode($result->choices[0]->message->content, true);
+            
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                throw new \Exception('Failed to parse routes data from OpenAI response');
+            }
+
+            // Create tour plan with routes
             $tourPlan = TourPlan::create([
-                'user_id' => Auth::id(), // If user is logged in
+                'user_id' => Auth::id(),
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date,
                 'duration_days' => $durationDays,
@@ -127,16 +167,20 @@ class TourPlanController extends Controller
                 'current_step' => 1,
                 'progress_data' => [
                     'step1_completed' => true,
-                    'step1_completed_at' => now()
+                    'step1_completed_at' => now(),
+                    'suggested_routes' => $routesData['routes'] // Store the suggested routes
                 ]
             ]);
 
-            return redirect()->route('tourplan.select-route', ['tourId' => $tourPlan->id]);
+            return redirect()
+                ->route('tourplan.select-route', ['tourId' => $tourPlan->id])
+                ->with('success', 'Tour plan created successfully!');
 
         } catch (\Exception $e) {
-           return back()
-            ->withErrors(['error' => 'Failed to create tour plan: ' . $e->getMessage()])
-            ->withInput();
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', 'Failed to create tour plan: ' . $e->getMessage());
         }
     }
 
