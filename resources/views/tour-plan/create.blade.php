@@ -317,7 +317,7 @@
                         <p class="text-muted">Follow these simple steps to create your dream vacation</p>
                     </div>
 
-                    @include('tour-plan.steps.page.step1')
+                    @yield('content_steps')
 
                     <!-- Wizard Content -->
                 </div>

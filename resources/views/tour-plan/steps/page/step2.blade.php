@@ -1,3 +1,10 @@
+@extends('tour-plan.create')
+@section('content_steps')
+
+
+
+    @include('tour-plan.steps.wizard-step-indicator',['step'  => 1])
+
 <style>
     #map {
         height: 500px;
@@ -146,7 +153,7 @@
         <div class="col-12">
             <h2>Travel Route Map</h2>
             <div id="map" data-map-id="tour-route-map"></div>
-            
+
             <div class="route-filter">
                 <select id="travelMode" onchange="updateRouteOptions()">
                     <option value="DRIVING">Driving</option>
@@ -233,7 +240,7 @@ async function initMap() {
 
 function processTourLocations() {
     locations = [];
-    
+
     // Start location
     locations.push({
         lat: parseFloat(tourDetails.start_location.latitude),
@@ -330,10 +337,10 @@ function getRouteAlternatives(travelMode, routeType) {
 
     // Generate different route combinations
     const routeCombinations = generateRouteCombinations();
-    
+
     // Create route requests for each combination with different preferences
     const requests = [];
-    
+
     routeCombinations.forEach(combination => {
         const baseRequest = {
             origin: new google.maps.LatLng(combination.origin.lat, combination.origin.lng),
@@ -434,7 +441,7 @@ function getRouteAlternatives(travelMode, routeType) {
     });
 
     // Fetch all routes
-    Promise.all(filteredRequests.map(routeMetadata => 
+    Promise.all(filteredRequests.map(routeMetadata =>
         new Promise((resolve, reject) => {
             directionsService.route(routeMetadata.request, (result, status) => {
                 if (status === 'OK') {
@@ -493,11 +500,11 @@ function generateRouteCombinations() {
     // If we have intermediate locations (like return location), generate combinations
     if (locations.length > 2) {
         const intermediatePoints = locations.slice(1, -1).filter(loc => loc.type !== 'suggested');
-        
+
         if (intermediatePoints.length > 0) {
             // Generate all possible permutations of intermediate points
             const permutations = getPermutations(intermediatePoints);
-            
+
             // Add each permutation as a route combination
             permutations.forEach(permutation => {
                 combinations.push({
@@ -515,18 +522,18 @@ function generateRouteCombinations() {
 
 function getPermutations(arr) {
     if (arr.length <= 1) return [arr];
-    
+
     const result = [];
     for (let i = 0; i < arr.length; i++) {
         const current = arr[i];
         const remaining = [...arr.slice(0, i), ...arr.slice(i + 1)];
         const remainingPerms = getPermutations(remaining);
-        
+
         for (const perm of remainingPerms) {
             result.push([current, ...perm]);
         }
     }
-    
+
     return result;
 }
 
@@ -548,20 +555,20 @@ function displayRouteAlternatives(results, travelMode) {
     Object.entries(groupedRoutes).forEach(([baseDescription, routes], groupIndex) => {
         const groupDiv = document.createElement('div');
         groupDiv.className = 'route-group';
-        
+
         // Check if this is a suggested route
         const isSuggestedRoute = tourDetails.suggested_routes?.some(r => r.route_name === baseDescription);
         const groupTitleClass = isSuggestedRoute ? 'route-group-title suggested' : 'route-group-title';
-        
+
         groupDiv.innerHTML = `<h5 class="${groupTitleClass}">${baseDescription}</h5>`;
 
         routes.forEach(({route, description, type}, index) => {
             const routeDiv = document.createElement('div');
             routeDiv.className = 'route-option';
-            
+
             const routeDetails = document.createElement('div');
             routeDetails.className = 'route-details';
-            
+
             // Calculate totals
             let totalDistance = 0;
             let totalDuration = 0;
@@ -571,7 +578,7 @@ function displayRouteAlternatives(results, travelMode) {
             });
 
             const routeColor = getRouteColor(groupIndex, isSuggestedRoute ? 'suggested' : 'default');
-            
+
             routeDetails.innerHTML = `
                 <div class="route-mode" style="border-left: 4px solid ${routeColor}">
                     <div class="route-title">${description}</div>
@@ -599,7 +606,7 @@ function formatDistance(meters) {
 function formatDuration(seconds) {
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    
+
     if (hours > 0) {
         return `${hours}h ${minutes}m`;
     }
@@ -608,13 +615,13 @@ function formatDuration(seconds) {
 
 function showRoute(route, travelMode, routeIndex, description, isSuggestedRoute) {
     event.stopPropagation();
-    
+
     // Clear previous routes and markers
     directionsRenderer.setMap(null);
     document.querySelectorAll('.custom-marker').forEach(marker => {
         marker.classList.remove('active');
     });
-    
+
     // Create new directions renderer with custom styling
     directionsRenderer = new google.maps.DirectionsRenderer({
         map: map,
@@ -648,7 +655,7 @@ function showRoute(route, travelMode, routeIndex, description, isSuggestedRoute)
         // Add start and end points
         bounds.extend(leg.start_location);
         bounds.extend(leg.end_location);
-        
+
         // Add intermediate points from steps for better bounds
         leg.steps.forEach(step => {
             bounds.extend(step.start_location);
@@ -663,7 +670,7 @@ function showRoute(route, travelMode, routeIndex, description, isSuggestedRoute)
         bottom: 50,
         left: 50
     };
-    
+
     map.fitBounds(bounds, padding);
 
     // Add click listener to map to deselect route
@@ -718,20 +725,20 @@ function displayRouteDetails(route, travelMode, routeIndex, description) {
 function deselectRoute() {
     // Clear route
     directionsRenderer.setMap(null);
-    
+
     // Remove active state from route options
     document.querySelectorAll('.route-option').forEach(option => {
         option.classList.remove('active');
     });
-    
+
     // Reset markers
     document.querySelectorAll('.custom-marker').forEach(marker => {
         marker.classList.remove('active');
     });
-    
+
     // Hide route details
     document.getElementById('routeInfo').style.display = 'none';
-    
+
     // Fit map to show all markers
     const bounds = new google.maps.LatLngBounds();
     markers.forEach(marker => bounds.extend(marker.position));
@@ -752,7 +759,7 @@ function highlightRouteMarkers(route) {
         const locationKey = position.lat + ',' + position.lng;
         if (routeLocations.has(locationKey)) {
             marker.content.classList.add('active');
-            
+
             // Create or update info window for the marker
             const infoWindow = new google.maps.InfoWindow({
                 content: `<strong>${marker.title}</strong>`
@@ -853,3 +860,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 </script>
+
+@endsection
