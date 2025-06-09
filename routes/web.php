@@ -50,4 +50,14 @@ Route::middleware('auth')->group(function () {
 
 Route::get('/careers', [App\Http\Controllers\CareerPageController::class, 'index'])->name('careers.index');
 
+// Tour Routes
+Route::prefix('tour')->name('tour.')->group(function () {
+    Route::get('/', [App\Http\Controllers\TourController::class, 'index'])->name('index');
+    Route::get('/create', [App\Http\Controllers\TourController::class, 'create'])->name('create');
+    Route::post('/generate-routes', [App\Http\Controllers\TourController::class, 'generateRoutes'])->name('generate-routes');
+    Route::get('/routes/{routeId}', [App\Http\Controllers\TourController::class, 'showRoutes'])->name('show-routes');
+    Route::delete('/routes/{routeId}', [App\Http\Controllers\TourController::class, 'destroy'])->name('destroy');
+    Route::get('/routes/{routeId}/stats', [App\Http\Controllers\TourController::class, 'getRouteStats'])->name('stats');
+});
+
 require __DIR__.'/auth.php';

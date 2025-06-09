@@ -112,14 +112,28 @@ class TourService
 
             $prompt = $this->buildRoutePrompt($startLocation, $endLocation, $returnLocation);
 
-            $result = OpenAI::chat()->create([
-                'model' => 'gpt-4',
+            // Set execution time limit from config
+            $timeout = config('tour.timeouts.ai_processing', 600);
+            set_time_limit($timeout);
+            ini_set('max_execution_time', $timeout);
+
+            // Configure OpenAI request parameters
+            $openAiConfig = [
+                'model' => config('tour.ai.model', 'gpt-4'),
                 'messages' => [
                     ['role' => 'user', 'content' => $prompt]
                 ],
-                'temperature' => 0.7,
-                'max_tokens' => 2000
-            ]);
+                'temperature' => config('tour.ai.temperature', 0.7),
+                'max_tokens' => config('tour.ai.max_tokens', 2000),
+            ];
+
+            // Make the OpenAI request with retry logic
+            $result = $this->makeOpenAiRequestWithRetry($openAiConfig);
+
+            if (!$result) {
+                Log::error('Failed to get response from OpenAI after all retry attempts');
+                return null;
+            }
 
             $gptOutputArray = $result->toArray();
             
@@ -145,10 +159,23 @@ class TourService
                 return null;
             }
 
+            // Validate route limits from config
+            $maxRoutes = config('tour.validation.max_routes_per_request', 5);
+            if (count($messageDetails['routes']) > $maxRoutes) {
+                $messageDetails['routes'] = array_slice($messageDetails['routes'], 0, $maxRoutes);
+                Log::warning("Routes limited to {$maxRoutes} as per configuration");
+            }
+
             // Store all locations from routes
             $storedLocations = [];
             foreach ($messageDetails['routes'] as $route) {
                 if (isset($route['places']) && is_array($route['places'])) {
+                    // Validate location limits
+                    $maxLocations = config('tour.validation.max_locations_per_route', 10);
+                    if (count($route['places']) > $maxLocations) {
+                        $route['places'] = array_slice($route['places'], 0, $maxLocations);
+                    }
+                    
                     foreach ($route['places'] as $place) {
                         try {
                             $location = $this->storeLocation([
@@ -171,12 +198,12 @@ class TourService
             $routeSelector->return_location_id = $returnLocation->id;
             $routeSelector->route_name = $messageDetails['routes'][0]['route_name'] ?? 'Generated Route';
             $routeSelector->routes_data = $messageDetails['routes'];
-            $routeSelector->stored_locations_count = count($storedLocations);
             $routeSelector->save();
 
             Log::info('Route generation completed successfully', [
                 'route_id' => $routeSelector->id,
-                'locations_stored' => count($storedLocations)
+                'locations_stored' => count($storedLocations),
+                'processing_time' => microtime(true) - LARAVEL_START
             ]);
 
             return $routeSelector;
@@ -189,6 +216,86 @@ class TourService
                 'trace' => $e->getTraceAsString()
             ]);
             throw $e;
+        }
+    }
+
+    /**
+     * Make OpenAI request with retry logic and proper timeout handling
+     *
+     * @param array $config
+     * @return mixed|null
+     */
+    private function makeOpenAiRequestWithRetry(array $config)
+    {
+        $maxRetries = config('tour.ai.retry_attempts', 3);
+        $retryDelay = config('tour.ai.retry_delay', 5);
+        
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                Log::info("OpenAI request attempt {$attempt} of {$maxRetries}");
+                
+                // Configure custom HTTP client with extended timeouts
+                $this->configureOpenAiClient();
+                
+                $result = OpenAI::chat()->create($config);
+                
+                Log::info("OpenAI request successful on attempt {$attempt}");
+                return $result;
+                
+            } catch (\Exception $e) {
+                Log::warning("OpenAI request failed on attempt {$attempt}: " . $e->getMessage());
+                
+                if ($attempt === $maxRetries) {
+                    Log::error("All OpenAI request attempts failed", [
+                        'error' => $e->getMessage(),
+                        'attempts' => $maxRetries
+                    ]);
+                    return null;
+                }
+                
+                // Wait before retrying
+                sleep($retryDelay);
+            }
+        }
+        
+        return null;
+    }
+
+    /**
+     * Configure OpenAI client with custom HTTP client and timeouts
+     */
+    private function configureOpenAiClient()
+    {
+        $curlTimeout = config('tour.timeouts.curl_timeout', 600);
+        $curlConnectTimeout = config('tour.timeouts.curl_connect_timeout', 30);
+        
+        // Set cURL options globally
+        curl_setopt_array(curl_init(), [
+            CURLOPT_TIMEOUT => $curlTimeout,
+            CURLOPT_CONNECTTIMEOUT => $curlConnectTimeout,
+        ]);
+        
+        // Set socket timeout
+        if (function_exists('ini_set')) {
+            ini_set('default_socket_timeout', $curlTimeout);
+        }
+        
+        // Configure Guzzle HTTP client if available
+        if (class_exists('\GuzzleHttp\Client')) {
+            try {
+                $client = new \GuzzleHttp\Client([
+                    'timeout' => $curlTimeout,
+                    'connect_timeout' => $curlConnectTimeout,
+                    'http_errors' => false,
+                ]);
+                
+                // Set the client globally for OpenAI
+                if (method_exists(OpenAI::class, 'setHttpClient')) {
+                    OpenAI::setHttpClient($client);
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to configure custom HTTP client: ' . $e->getMessage());
+            }
         }
     }
 
@@ -314,13 +421,23 @@ Ensure all coordinates are realistic and the routes are practical for travel.";
         try {
             $route = RouteSelector::findOrFail($routeId);
             
+            // Calculate total places from routes data
+            $totalPlaces = 0;
+            if (isset($route->routes_data) && is_array($route->routes_data)) {
+                foreach ($route->routes_data as $routeData) {
+                    if (isset($routeData['places']) && is_array($routeData['places'])) {
+                        $totalPlaces += count($routeData['places']);
+                    }
+                }
+            }
+            
             return [
                 'route_id' => $route->id,
                 'route_name' => $route->route_name,
-                'total_places' => count($route->routes_data[0]['places'] ?? []),
+                'total_places' => $totalPlaces,
                 'total_routes' => count($route->routes_data),
                 'created_at' => $route->created_at,
-                'locations_stored' => $route->stored_locations_count ?? 0
+                'locations_stored' => $totalPlaces // Calculate dynamically
             ];
         } catch (\Exception $e) {
             Log::error('Error getting route statistics: ' . $e->getMessage());

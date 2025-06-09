@@ -117,7 +117,7 @@ class TourPlanController extends Controller
                 $returnLocationDetails = $startLocationDetails;
             }
 
-            $getFindAvailableRoutes = $tourService->getTrvelRoutesfromAi($startLocationDetails,$endLocationDetails, $returnLocationDetails);
+            $getFindAvailableRoutes = $tourService->getTravelRoutesFromAi($startLocationDetails,$endLocationDetails, $returnLocationDetails);
 
             $totalGroupSize = $request->adult_count + $request->child_count + $request->infant_count;
 
