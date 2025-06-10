@@ -473,6 +473,49 @@
             color: #6c757d;
             pointer-events: none;
         }
+
+        /* Loading Spinner Styles */
+        .spin {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .btn-loading {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        /* Alert Styles */
+        .alert {
+            margin-bottom: 1rem;
+            border-radius: 8px;
+        }
+
+        .alert-success {
+            background-color: #d1e7dd;
+            border-color: #badbcc;
+            color: #0f5132;
+        }
+
+        .alert-danger {
+            background-color: #f8d7da;
+            border-color: #f5c2c7;
+            color: #842029;
+        }
     </style>
 
     <!-- Test script to verify script loading -->
@@ -1030,7 +1073,12 @@
 
                     <!-- Submit Button -->
                     <div class="col-12 text-end">
-                        <button type="submit" class="btn btn-primary">Continue to Tour Schedule</button>
+                        <button type="submit" class="btn btn-primary" id="submitBtn">
+                            <span class="btn-text">Continue to Tour Schedule</span>
+                            <span class="btn-loading" style="display: none;">
+                                <i class="bi bi-arrow-clockwise spin"></i> Processing...
+                            </span>
+                        </button>
                     </div>
                 </form>
             </div>
@@ -1412,6 +1460,230 @@
                 checkbox.closest('.preference-card').classList.remove('selected');
                 updateSelectedLocations();
             }
+        }
+
+        // AJAX Form Submission
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('tourPlanForm');
+            const submitBtn = document.getElementById('submitBtn');
+            const btnText = submitBtn.querySelector('.btn-text');
+            const btnLoading = submitBtn.querySelector('.btn-loading');
+
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+
+                // Validate form
+                if (!form.checkValidity()) {
+                    form.classList.add('was-validated');
+                    return;
+                }
+
+                // Additional validation for required fields
+                const requiredFields = form.querySelectorAll('[required]');
+                let hasEmptyFields = false;
+                
+                requiredFields.forEach(field => {
+                    if (!field.value.trim()) {
+                        field.classList.add('is-invalid');
+                        hasEmptyFields = true;
+                    } else {
+                        field.classList.remove('is-invalid');
+                    }
+                });
+
+                if (hasEmptyFields) {
+                    showAlert('error', 'Please fill in all required fields.');
+                    return;
+                }
+
+                // Show loading state
+                submitBtn.disabled = true;
+                btnText.style.display = 'none';
+                btnLoading.style.display = 'inline-block';
+
+                // Prepare form data
+                const formData = new FormData(form);
+
+                // Send AJAX request
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json, text/html, */*'
+                    }
+                })
+                .then(response => {
+                    // Check if response is JSON or HTML
+                    const contentType = response.headers.get('content-type');
+                    
+                    if (contentType && contentType.includes('application/json')) {
+                        // Handle JSON response
+                        return response.json().then(data => {
+                            return { type: 'json', data: data };
+                        });
+                    } else {
+                        // Handle HTML response (redirect or error page)
+                        return response.text().then(html => {
+                            return { type: 'html', data: html };
+                        });
+                    }
+                })
+                .then(result => {
+                    // Hide loading state
+                    submitBtn.disabled = false;
+                    btnText.style.display = 'inline-block';
+                    btnLoading.style.display = 'none';
+
+                    if (result.type === 'json') {
+                        const data = result.data;
+                        
+                        if (data.success) {
+                            // Show success message
+                            showAlert('success', data.message || 'Tour plan created successfully!');
+                            
+                            // Handle redirect with TourPlan ID
+                            if (data.tourplan_id) {
+                                // Redirect to select-routes page with the TourPlan ID
+                                setTimeout(() => {
+                                    window.location.href = `/tour-plan/${data.tourplan_id}/select-routes`;
+                                }, 1500);
+                            } else if (data.redirect_url) {
+                                // Fallback to redirect_url if provided
+                                setTimeout(() => {
+                                    window.location.href = data.redirect_url;
+                                }, 1500);
+                            } else {
+                                // If no redirect info, show success and reload
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 2000);
+                            }
+                        } else {
+                            // Show error message
+                            showAlert('error', data.message || 'An error occurred. Please try again.');
+                            
+                            // Display validation errors if any
+                            if (data.errors) {
+                                displayValidationErrors(data.errors);
+                            }
+                        }
+                    } else {
+                        // Handle HTML response (usually a redirect or error page)
+                        const html = result.data;
+                        
+                        // Check if the HTML contains validation errors
+                        if (html.includes('alert-danger') || html.includes('invalid-feedback')) {
+                            showAlert('error', 'Please check the form for validation errors.');
+                            // Reload to show the errors
+                            setTimeout(() => {
+                                window.location.reload();
+                            }, 2000);
+                            return;
+                        }
+                        
+                        // Check if the HTML contains a redirect
+                        if (html.includes('window.location') || html.includes('redirect')) {
+                            // Extract redirect URL if present
+                            const redirectMatch = html.match(/window\.location\.href\s*=\s*['"]([^'"]+)['"]/);
+                            if (redirectMatch) {
+                                window.location.href = redirectMatch[1];
+                            } else {
+                                // Reload the page to show the new content
+                                window.location.reload();
+                            }
+                        } else {
+                            // Check if it's a success page
+                            if (html.includes('success') || html.includes('created') || html.includes('saved')) {
+                                showAlert('success', 'Tour plan created successfully!');
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 1500);
+                            } else {
+                                // Generic handling - reload the page
+                                showAlert('success', 'Form submitted successfully!');
+                                setTimeout(() => {
+                                    window.location.reload();
+                                }, 1500);
+                            }
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    
+                    // Hide loading state
+                    submitBtn.disabled = false;
+                    btnText.style.display = 'inline-block';
+                    btnLoading.style.display = 'none';
+                    
+                    // Show error message and offer fallback
+                    showAlert('error', 'AJAX request failed. Trying regular form submission...');
+                    
+                    // Fallback to regular form submission after a short delay
+                    setTimeout(() => {
+                        // Remove the event listener temporarily
+                        form.removeEventListener('submit', arguments.callee);
+                        // Submit the form normally
+                        form.submit();
+                    }, 2000);
+                });
+            });
+        });
+
+        // Function to show alerts
+        function showAlert(type, message) {
+            // Remove existing alerts
+            const existingAlerts = document.querySelectorAll('.alert');
+            existingAlerts.forEach(alert => alert.remove());
+
+            // Create alert element
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type === 'success' ? 'success' : 'danger'} alert-dismissible fade show`;
+            alertDiv.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+
+            // Insert alert at the top of the form
+            const form = document.getElementById('tourPlanForm');
+            form.parentNode.insertBefore(alertDiv, form);
+
+            // Auto-dismiss success alerts after 5 seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    if (alertDiv.parentNode) {
+                        alertDiv.remove();
+                    }
+                }, 5000);
+            }
+        }
+
+        // Function to display validation errors
+        function displayValidationErrors(errors) {
+            // Clear previous error states
+            document.querySelectorAll('.is-invalid').forEach(element => {
+                element.classList.remove('is-invalid');
+            });
+            document.querySelectorAll('.invalid-feedback').forEach(element => {
+                element.remove();
+            });
+
+            // Display new errors
+            Object.keys(errors).forEach(field => {
+                const input = document.querySelector(`[name="${field}"]`);
+                if (input) {
+                    input.classList.add('is-invalid');
+                    
+                    // Create error message
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'invalid-feedback';
+                    errorDiv.textContent = errors[field][0];
+                    
+                    // Insert error message after input
+                    input.parentNode.appendChild(errorDiv);
+                }
+            });
         }
     </script>
 @endsection

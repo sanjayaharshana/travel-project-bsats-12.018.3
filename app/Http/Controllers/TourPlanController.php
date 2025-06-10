@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Http\Requests\CreateTourPlanRequest;
 use App\Http\Service\TourService;
 use App\Models\TourPlan;
+use App\Models\Locations;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use OpenAI\Laravel\Facades\OpenAI;
@@ -17,35 +19,31 @@ class TourPlanController extends Controller
 
     public function create()
     {
-        return view('tour-plan.steps.page.step1');
+        return view('tour-plan.steps.page.step1',[
+            'step' => 1
+        ]);
     }
 
     public function selectRoute(Request $request, $tourId)
     {
-        $travelPlan = TourPlan::findOrFail($tourId);
+        $tourPlan = TourPlan::findOrFail($tourId);
 
-        $tourDetails = [
-            'routes' => [
-                [
-                    'route_name' => 'Route 1',
-                    'places' => [
-                        ['name' => 'Place A', 'coordinates' => ['lat' => 12.34, 'lng' => 56.78]],
-                        ['name' => 'Place B', 'coordinates' => ['lat' => 23.45, 'lng' => 67.89]]
-                    ]
-                ],
-                [
-                    'route_name' => 'Route 2',
-                    'places' => [
-                        ['name' => 'Place C', 'coordinates' => ['lat' => 34.56, 'lng' => 78.90]],
-                        ['name' => 'Place D', 'coordinates' => ['lat' => 45.67, 'lng' => 89.01]]
-                    ]
-                ]
-            ]
-        ];
+        // Get location details from the tour plan
+        $startLocation = Locations::find($tourPlan->start_location);
+        $endLocation = Locations::find($tourPlan->end_location);
+        $returnLocation = Locations::find($tourPlan->return_location);
+
+        // Get suggested routes from the relationship
+        $suggestedRoutes = $tourPlan->suggestedRoutes()->first();
 
         return view('tour-plan.steps.page.step2', [
             'tourId' => $tourId,
-            'tourDetails' => $tourDetails,
+            'tourPlan' => $tourPlan,
+            'suggestedRoutes' => $suggestedRoutes,
+            'startLocation' => $startLocation,
+            'endLocation' => $endLocation,
+            'returnLocation' => $returnLocation,
+            'step' => 2,
         ]);
     }
 
@@ -77,6 +75,14 @@ class TourPlanController extends Controller
         ]);
 
         if ($validator->fails()) {
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
             return redirect()
                 ->back()
                 ->withErrors($validator)
@@ -84,6 +90,7 @@ class TourPlanController extends Controller
                 ->with('error', 'Please correct the errors in the form.');
         }
 
+        try {
             // Calculate duration
             $startDate = new \DateTime($request->start_date);
             $endDate = new \DateTime($request->end_date);
@@ -103,21 +110,17 @@ class TourPlanController extends Controller
                   'name' => $request->end_location_name
               ]);
 
-
-
             if ($request->return_type === 'specific') {
-
                 $returnLocationDetails =  $tourService->storeLocation([
                     'latitude' => $request->return_location_lat,
                     'longitude' => $request->return_location_lng,
                     'name' => $request->return_location_name
                 ]);
-
-            }else{
+            } else {
                 $returnLocationDetails = $startLocationDetails;
             }
 
-            $getFindAvailableRoutes = $tourService->getTravelRoutesFromAi($startLocationDetails,$endLocationDetails, $returnLocationDetails);
+            $getFindAvailableRoutes = $tourService->getTravelRoutesFromAi($startLocationDetails,$endLocationDetails,$returnLocationDetails);
 
             $totalGroupSize = $request->adult_count + $request->child_count + $request->infant_count;
 
@@ -145,16 +148,47 @@ class TourPlanController extends Controller
                 'progress_data' => [
                     'step1_completed' => true,
                     'step1_completed_at' => now(),
-                    'suggested_routes_id' => $getFindAvailableRoutes->id // Store the suggested routes
+                    'suggested_routes_id' => $getFindAvailableRoutes->id ?? null
                 ]
             ]);
 
+            // Handle AJAX request
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Tour plan created successfully!',
+                    'tourplan_id' => $tourPlan->id,
+                    'redirect_url' => route('tourplan.select-route', ['tourId' => $tourPlan->id])
+                ]);
+            }
+
+            // Handle regular form submission
             return redirect()
                 ->route('tourplan.select-route', [
                     'tourId' => $tourPlan->id
                 ])
                 ->with('success', 'Tour plan created successfully!');
 
+        } catch (\Exception $e) {
+            \Log::error('Error creating tour plan: ' . $e->getMessage(), [
+                'request_data' => $request->all(),
+                'user_id' => Auth::id(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'An error occurred while creating the tour plan. Please try again.',
+                    'debug_message' => config('app.debug') ? $e->getMessage() : null
+                ], 500);
+            }
+
+            return redirect()
+                ->back()
+                ->withInput()
+                ->with('error', 'An error occurred while creating the tour plan. Please try again.');
+        }
     }
 
 

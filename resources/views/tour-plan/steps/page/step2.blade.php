@@ -3,7 +3,7 @@
 
 
 
-    @include('tour-plan.steps.wizard-step-indicator',['step'  => 1])
+    @include('tour-plan.steps.wizard-step-indicator',['step'  => 2])
 
 <style>
     #map {
@@ -171,21 +171,80 @@
             </div>
 
             <div class="route-options">
-                <h4>Route Suggestions</h4>
-                <div id="routeOptions"></div>
+                <h4>Suggested Routes</h4>
+                @if($suggestedRoutes && $suggestedRoutes->routes_data && count($suggestedRoutes->routes_data) > 0)
+                    <div id="suggestedRoutes">
+                        @foreach($suggestedRoutes->routes_data as $index => $route)
+                            <div class="route-option" data-route-index="{{ $index }}" onclick="selectRoute({{ $index }})">
+                                <div class="route-info">
+                                    <div class="route-title">{{ $route['route_name'] }}</div>
+                                    <div class="route-stats">
+                                        <span>{{ count($route['places']) }} places</span>
+                                        <span>•</span>
+                                        <span>Route {{ $index + 1 }}</span>
+                                    </div>
+                                </div>
+                                <div class="route-actions">
+                                    <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); previewRoute({{ $index }})">
+                                        <i class="bi bi-eye"></i> Preview
+                                    </button>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                @else
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        No suggested routes available. Please wait while we generate routes for you.
+                    </div>
+                @endif
             </div>
 
             <div id="routeInfo" class="route-info" style="display: none;">
                 <h5>Route Details</h5>
                 <div id="routeDetails"></div>
+                <div class="mt-3">
+                    <button type="button" class="btn btn-primary" onclick="continueToNextStep()" id="continueBtn" style="display: none;">
+                        <i class="bi bi-arrow-right"></i> Continue to Next Step
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <script>
-// Tour details data from the backend
-const tourDetails = @json($tourDetails);
+// Tour data from the backend
+const tourPlan = @json($tourPlan);
+const suggestedRoutes = @json($suggestedRoutes);
+const routesData = suggestedRoutes ? suggestedRoutes.routes_data : [];
+
+// Location data from the backend
+const startLocation = @json($startLocation);
+const endLocation = @json($endLocation);
+const returnLocation = @json($returnLocation);
+
+// Create tourDetails from actual location data
+const tourDetails = {
+    start_location: {
+        id: tourPlan.start_location,
+        name: startLocation ? startLocation.location_name : 'Start Location',
+        latitude: startLocation ? parseFloat(startLocation.latitude) : 6.9271,
+        longitude: startLocation ? parseFloat(startLocation.longitude) : 79.8612
+    },
+    end_location: {
+        id: tourPlan.end_location,
+        name: endLocation ? endLocation.location_name : 'End Location',
+        latitude: endLocation ? parseFloat(endLocation.latitude) : 7.2906,
+        longitude: endLocation ? parseFloat(endLocation.longitude) : 80.6337
+    },
+    return_location: {
+        id: tourPlan.return_location,
+        name: returnLocation ? returnLocation.location_name : 'Return Location',
+        latitude: returnLocation ? parseFloat(returnLocation.latitude) : 6.9271,
+        longitude: returnLocation ? parseFloat(returnLocation.longitude) : 79.8612
+    }
+};
 
 let map;
 let directionsService;
@@ -193,6 +252,7 @@ let directionsRenderer;
 let markers = [];
 let locations = [];
 let currentRoute = null;
+let selectedRouteIndex = null;
 
 // Load Google Maps API asynchronously
 function loadGoogleMapsAPI() {
@@ -205,82 +265,92 @@ function loadGoogleMapsAPI() {
 
 // Initialize the map
 async function initMap() {
-    const { Map } = await google.maps.importLibrary("maps");
-    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+    try {
+        const { Map } = await google.maps.importLibrary("maps");
+        const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
 
-    const mapElement = document.getElementById('map');
-    const mapId = mapElement.dataset.mapId;
-
-    map = new Map(mapElement, {
-        mapId: mapId,
-        zoom: 12,
-        center: { lat: 0, lng: 0 },
-    });
-
-    directionsService = new google.maps.DirectionsService();
-    directionsRenderer = new google.maps.DirectionsRenderer({
-        map: map,
-        suppressMarkers: true,
-        polylineOptions: {
-            strokeColor: '#007bff',
-            strokeWeight: 5,
-            strokeOpacity: 0.8
+        const mapElement = document.getElementById('map');
+        if (!mapElement) {
+            console.error('Map element not found');
+            return;
         }
-    });
 
-    // Add click listener to map to deselect route
-    map.addListener('click', () => {
-        deselectRoute();
-    });
+        const mapId = mapElement.dataset.mapId;
 
-    processTourLocations();
-    await addLocationMarkers(AdvancedMarkerElement);
-    updateRouteOptions();
+        map = new Map(mapElement, {
+            mapId: mapId,
+            zoom: 12,
+            center: { lat: 6.9271, lng: 79.8612 }, // Default to Colombo
+        });
+
+        directionsService = new google.maps.DirectionsService();
+        directionsRenderer = new google.maps.DirectionsRenderer({
+            map: map,
+            suppressMarkers: true,
+            polylineOptions: {
+                strokeColor: '#007bff',
+                strokeWeight: 5,
+                strokeOpacity: 0.8
+            }
+        });
+
+        // Add click listener to map to deselect route
+        map.addListener('click', () => {
+            deselectRoute();
+        });
+
+        processTourLocations();
+        await addLocationMarkers(AdvancedMarkerElement);
+        
+        // Show first route by default if available
+        if (routesData.length > 0) {
+            selectRoute(0);
+        }
+    } catch (error) {
+        console.error('Error initializing map:', error);
+    }
 }
 
 function processTourLocations() {
     locations = [];
 
-    // Start location
-    locations.push({
-        lat: parseFloat(tourDetails.start_location.latitude),
-        lng: parseFloat(tourDetails.start_location.longitude),
-        name: tourDetails.start_location.name,
-        type: 'start'
-    });
+    // Validate tourDetails exists and has required properties
+    if (!tourDetails) {
+        console.error('Tour details not found');
+        return;
+    }
 
-    // Return location (if available)
-    if (tourDetails.return_location) {
+    // Start location with validation
+    if (tourDetails.start_location && tourDetails.start_location.latitude && tourDetails.start_location.longitude) {
+        locations.push({
+            lat: parseFloat(tourDetails.start_location.latitude),
+            lng: parseFloat(tourDetails.start_location.longitude),
+            name: tourDetails.start_location.name || 'Start Location',
+            type: 'start'
+        });
+    } else {
+        console.warn('Start location data is missing or incomplete');
+    }
+
+    // End location with validation
+    if (tourDetails.end_location && tourDetails.end_location.latitude && tourDetails.end_location.longitude) {
+        locations.push({
+            lat: parseFloat(tourDetails.end_location.latitude),
+            lng: parseFloat(tourDetails.end_location.longitude),
+            name: tourDetails.end_location.name || 'End Location',
+            type: 'end'
+        });
+    } else {
+        console.warn('End location data is missing or incomplete');
+    }
+
+    // Return location with validation
+    if (tourDetails.return_location && tourDetails.return_location.latitude && tourDetails.return_location.longitude) {
         locations.push({
             lat: parseFloat(tourDetails.return_location.latitude),
             lng: parseFloat(tourDetails.return_location.longitude),
-            name: tourDetails.return_location.name,
+            name: tourDetails.return_location.name || 'Return Location',
             type: 'return'
-        });
-    }
-
-    // End location
-    locations.push({
-        lat: parseFloat(tourDetails.end_location.latitude),
-        lng: parseFloat(tourDetails.end_location.longitude),
-        name: tourDetails.end_location.name,
-        type: 'end'
-    });
-
-    // Add suggested route locations if available
-    if (tourDetails.suggested_routes && tourDetails.suggested_routes.length > 0) {
-        tourDetails.suggested_routes.forEach((route, routeIndex) => {
-            route.places.forEach((place, placeIndex) => {
-                locations.push({
-                    lat: parseFloat(place.coordinates.lat),
-                    lng: parseFloat(place.coordinates.lng),
-                    name: place.name,
-                    type: 'suggested',
-                    routeIndex: routeIndex,
-                    placeIndex: placeIndex,
-                    routeName: route.route_name
-                });
-            });
         });
     }
 }
@@ -290,29 +360,48 @@ async function addLocationMarkers(AdvancedMarkerElement) {
     markers.forEach(marker => marker.map = null);
     markers = [];
 
+    // Validate locations array
+    if (!locations || locations.length === 0) {
+        console.warn('No locations to add markers for');
+        return;
+    }
+
     locations.forEach((location, index) => {
-        const markerContent = createMarkerContent(index + 1, location.type);
-        const marker = new AdvancedMarkerElement({
-            map,
-            position: { lat: location.lat, lng: location.lng },
-            title: location.name,
-            content: markerContent
-        });
+        // Validate location data
+        if (!location || typeof location.lat !== 'number' || typeof location.lng !== 'number') {
+            console.warn(`Invalid location data at index ${index}:`, location);
+            return;
+        }
 
-        const infoWindow = new google.maps.InfoWindow({
-            content: `<strong>${location.name}</strong>`
-        });
+        try {
+            const markerContent = createMarkerContent(index + 1, location.type);
+            const marker = new AdvancedMarkerElement({
+                map,
+                position: { lat: location.lat, lng: location.lng },
+                title: location.name,
+                content: markerContent
+            });
 
-        marker.addListener('gmp-click', () => {
-            infoWindow.open(map, marker);
-        });
+            const infoWindow = new google.maps.InfoWindow({
+                content: `<strong>${location.name}</strong>`
+            });
 
-        markers.push(marker);
+            marker.addListener('gmp-click', () => {
+                infoWindow.open(map, marker);
+            });
+
+            markers.push(marker);
+        } catch (error) {
+            console.error(`Error creating marker for location ${index}:`, error);
+        }
     });
 
-    const bounds = new google.maps.LatLngBounds();
-    markers.forEach(marker => bounds.extend(marker.position));
-    map.fitBounds(bounds);
+    // Fit map to show all markers
+    if (markers.length > 0) {
+        const bounds = new google.maps.LatLngBounds();
+        markers.forEach(marker => bounds.extend(marker.position));
+        map.fitBounds(bounds);
+    }
 }
 
 function createMarkerContent(number, type) {
@@ -322,542 +411,162 @@ function createMarkerContent(number, type) {
     return div;
 }
 
-function updateRouteOptions() {
-    const travelMode = document.getElementById('travelMode').value;
-    const routeType = document.getElementById('routeType').value;
-    const routeOptionsContainer = document.getElementById('routeOptions');
-    routeOptionsContainer.innerHTML = '';
-
-    getRouteAlternatives(travelMode, routeType);
-}
-
-function getRouteAlternatives(travelMode, routeType) {
-    const routeOptionsContainer = document.getElementById('routeOptions');
-    routeOptionsContainer.innerHTML = '<div class="text-center"><div class="spinner-border" role="status"><span class="visually-hidden">Loading...</span></div></div>';
-
-    // Generate different route combinations
-    const routeCombinations = generateRouteCombinations();
-
-    // Create route requests for each combination with different preferences
-    const requests = [];
-
-    routeCombinations.forEach(combination => {
-        const baseRequest = {
-            origin: new google.maps.LatLng(combination.origin.lat, combination.origin.lng),
-            destination: new google.maps.LatLng(combination.destination.lat, combination.destination.lng),
-            travelMode: google.maps.TravelMode[travelMode],
-            waypoints: combination.waypoints.map(point => ({
-                location: new google.maps.LatLng(point.lat, point.lng),
-                stopover: true
-            }))
-        };
-
-        // Store route metadata separately
-        const routeMetadata = {
-            type: 'fastest',
-            description: `${combination.description} (Fastest)`,
-            request: { ...baseRequest, optimizeWaypoints: false }
-        };
-        requests.push(routeMetadata);
-
-        // Add route with different waypoint order for alternative path
-        if (combination.waypoints.length > 0) {
-            const reversedWaypoints = [...combination.waypoints].reverse();
-            requests.push({
-                type: 'alternative',
-                description: `${combination.description} (Alternative Path)`,
-                request: {
-                    ...baseRequest,
-                    waypoints: reversedWaypoints.map(point => ({
-                        location: new google.maps.LatLng(point.lat, point.lng),
-                        stopover: true
-                    })),
-                    optimizeWaypoints: false
-                }
-            });
-        }
-
-        // Add route avoiding highways
-        requests.push({
-            type: 'avoidHighways',
-            description: `${combination.description} (Avoid Highways)`,
-            request: {
-                ...baseRequest,
-                avoidHighways: true,
-                optimizeWaypoints: false
-            }
-        });
-
-        // Add route avoiding tolls
-        requests.push({
-            type: 'avoidTolls',
-            description: `${combination.description} (Avoid Tolls)`,
-            request: {
-                ...baseRequest,
-                avoidTolls: true,
-                optimizeWaypoints: false
-            }
-        });
-
-        // Add scenic route preference
-        requests.push({
-            type: 'scenic',
-            description: `${combination.description} (Scenic)`,
-            request: {
-                ...baseRequest,
-                avoidHighways: true,
-                avoidTolls: true,
-                optimizeWaypoints: false
-            }
-        });
-
-        // Add route with optimized waypoints for another alternative
-        if (combination.waypoints.length > 1) {
-            requests.push({
-                type: 'optimized',
-                description: `${combination.description} (Optimized)`,
-                request: {
-                    ...baseRequest,
-                    optimizeWaypoints: true
-                }
-            });
-        }
-    });
-
-    // Filter requests based on selected route type
-    const filteredRequests = requests.filter(route => {
-        if (routeType === 'fastest') return route.type === 'fastest';
-        if (routeType === 'avoidHighways') return route.type === 'avoidHighways';
-        if (routeType === 'avoidTolls') return route.type === 'avoidTolls';
-        if (routeType === 'scenic') return route.type === 'scenic';
-        return true;
-    });
-
-    // Clear previous routes
-    directionsRenderer.setMap(null);
-    document.getElementById('routeInfo').style.display = 'none';
-    document.querySelectorAll('.custom-marker').forEach(marker => {
-        marker.classList.remove('active');
-    });
-
-    // Fetch all routes
-    Promise.all(filteredRequests.map(routeMetadata =>
-        new Promise((resolve, reject) => {
-            directionsService.route(routeMetadata.request, (result, status) => {
-                if (status === 'OK') {
-                    resolve({
-                        route: result.routes[0],
-                        description: routeMetadata.description,
-                        type: routeMetadata.type
-                    });
-                } else {
-                    reject(status);
-                }
-            });
-        })
-    ))
-    .then(results => {
-        displayRouteAlternatives(results, travelMode);
-    })
-    .catch(error => {
-        console.error('Error fetching routes:', error);
-        routeOptionsContainer.innerHTML = '<div class="alert alert-warning">No routes found for the selected options. Please try different settings.</div>';
-    });
-}
-
-function generateRouteCombinations() {
-    const combinations = [];
-    const start = locations[0];
-    const end = locations[locations.length - 1];
-
-    // Direct route (start to end)
-    combinations.push({
-        origin: start,
-        destination: end,
-        waypoints: [],
-        description: 'Direct Route'
-    });
-
-    // If we have suggested routes, add them as combinations
-    if (tourDetails.suggested_routes && tourDetails.suggested_routes.length > 0) {
-        tourDetails.suggested_routes.forEach((route, routeIndex) => {
-            const waypoints = route.places.map(place => ({
-                lat: parseFloat(place.coordinates.lat),
-                lng: parseFloat(place.coordinates.lng),
-                name: place.name,
-                type: 'suggested'
-            }));
-
-            combinations.push({
-                origin: start,
-                destination: end,
-                waypoints: waypoints,
-                description: route.route_name
-            });
-        });
-    }
-
-    // If we have intermediate locations (like return location), generate combinations
-    if (locations.length > 2) {
-        const intermediatePoints = locations.slice(1, -1).filter(loc => loc.type !== 'suggested');
-
-        if (intermediatePoints.length > 0) {
-            // Generate all possible permutations of intermediate points
-            const permutations = getPermutations(intermediatePoints);
-
-            // Add each permutation as a route combination
-            permutations.forEach(permutation => {
-                combinations.push({
-                    origin: start,
-                    destination: end,
-                    waypoints: permutation,
-                    description: `Via ${permutation.map(p => p.name).join(' → ')}`
-                });
-            });
-        }
-    }
-
-    return combinations;
-}
-
-function getPermutations(arr) {
-    if (arr.length <= 1) return [arr];
-
-    const result = [];
-    for (let i = 0; i < arr.length; i++) {
-        const current = arr[i];
-        const remaining = [...arr.slice(0, i), ...arr.slice(i + 1)];
-        const remainingPerms = getPermutations(remaining);
-
-        for (const perm of remainingPerms) {
-            result.push([current, ...perm]);
-        }
-    }
-
-    return result;
-}
-
-function displayRouteAlternatives(results, travelMode) {
-    const routeOptionsContainer = document.getElementById('routeOptions');
-    routeOptionsContainer.innerHTML = '';
-
-    // Group routes by their base description
-    const groupedRoutes = results.reduce((groups, {route, description, type}) => {
-        const baseDescription = description.split(' (')[0];
-        if (!groups[baseDescription]) {
-            groups[baseDescription] = [];
-        }
-        groups[baseDescription].push({route, description, type});
-        return groups;
-    }, {});
-
-    // Display routes by group
-    Object.entries(groupedRoutes).forEach(([baseDescription, routes], groupIndex) => {
-        const groupDiv = document.createElement('div');
-        groupDiv.className = 'route-group';
-
-        // Check if this is a suggested route
-        const isSuggestedRoute = tourDetails.suggested_routes?.some(r => r.route_name === baseDescription);
-        const groupTitleClass = isSuggestedRoute ? 'route-group-title suggested' : 'route-group-title';
-
-        groupDiv.innerHTML = `<h5 class="${groupTitleClass}">${baseDescription}</h5>`;
-
-        routes.forEach(({route, description, type}, index) => {
-            const routeDiv = document.createElement('div');
-            routeDiv.className = 'route-option';
-
-            const routeDetails = document.createElement('div');
-            routeDetails.className = 'route-details';
-
-            // Calculate totals
-            let totalDistance = 0;
-            let totalDuration = 0;
-            route.legs.forEach(leg => {
-                totalDistance += leg.distance.value;
-                totalDuration += leg.duration.value;
-            });
-
-            const routeColor = getRouteColor(groupIndex, isSuggestedRoute ? 'suggested' : 'default');
-
-            routeDetails.innerHTML = `
-                <div class="route-mode" style="border-left: 4px solid ${routeColor}">
-                    <div class="route-title">${description}</div>
-                    <div class="route-stats">
-                        <span><i class="fas fa-road"></i> ${formatDistance(totalDistance)}</span>
-                        <span><i class="fas fa-clock"></i> ${formatDuration(totalDuration)}</span>
-                    </div>
-                </div>
-            `;
-
-            routeDiv.appendChild(routeDetails);
-            routeDiv.onclick = () => showRoute(route, travelMode, groupIndex, description, isSuggestedRoute);
-            groupDiv.appendChild(routeDiv);
-        });
-
-        routeOptionsContainer.appendChild(groupDiv);
-    });
-}
-
-function formatDistance(meters) {
-    const km = meters / 1000;
-    return km.toFixed(1) + ' km';
-}
-
-function formatDuration(seconds) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-
-    if (hours > 0) {
-        return `${hours}h ${minutes}m`;
-    }
-    return `${minutes} min`;
-}
-
-function showRoute(route, travelMode, routeIndex, description, isSuggestedRoute) {
-    event.stopPropagation();
-
-    // Clear previous routes and markers
-    directionsRenderer.setMap(null);
-    document.querySelectorAll('.custom-marker').forEach(marker => {
-        marker.classList.remove('active');
-    });
-
-    // Create new directions renderer with custom styling
-    directionsRenderer = new google.maps.DirectionsRenderer({
-        map: map,
-        suppressMarkers: true, // We'll use our custom markers
-        polylineOptions: {
-            strokeColor: getRouteColor(routeIndex, isSuggestedRoute ? 'suggested' : 'default'),
-            strokeWeight: 5,
-            strokeOpacity: 0.8
-        },
-        preserveViewport: false // Allow map to fit bounds
-    });
-
-    // Set the route
-    directionsRenderer.setDirections({ routes: [route] });
-
-    // Update active route option
+// Function to select a route
+function selectRoute(routeIndex) {
+    // Remove active class from all route options
     document.querySelectorAll('.route-option').forEach(option => {
         option.classList.remove('active');
     });
-    event.currentTarget.classList.add('active');
 
-    // Highlight markers along the route
-    highlightRouteMarkers(route);
+    // Add active class to selected route
+    const selectedOption = document.querySelector(`[data-route-index="${routeIndex}"]`);
+    if (selectedOption) {
+        selectedOption.classList.add('active');
+    }
 
-    // Show route details
-    displayRouteDetails(route, travelMode, routeIndex, description);
+    selectedRouteIndex = routeIndex;
+    displayRouteOnMap(routeIndex);
+    showRouteDetails(routeIndex);
+    
+    // Show continue button
+    document.getElementById('continueBtn').style.display = 'inline-block';
+}
 
-    // Fit map to show entire route with padding
-    const bounds = new google.maps.LatLngBounds();
-    route.legs.forEach(leg => {
-        // Add start and end points
-        bounds.extend(leg.start_location);
-        bounds.extend(leg.end_location);
+// Function to preview a route
+function previewRoute(routeIndex) {
+    displayRouteOnMap(routeIndex);
+    showRouteDetails(routeIndex);
+}
 
-        // Add intermediate points from steps for better bounds
-        leg.steps.forEach(step => {
-            bounds.extend(step.start_location);
-            bounds.extend(step.end_location);
-        });
-    });
+// Function to display route on map
+function displayRouteOnMap(routeIndex) {
+    if (!routesData[routeIndex]) {
+        console.error('Route data not found for index:', routeIndex);
+        return;
+    }
 
-    // Add padding to bounds
-    const padding = {
-        top: 50,
-        right: 50,
-        bottom: 50,
-        left: 50
+    const route = routesData[routeIndex];
+    const places = route.places;
+
+    if (places.length < 2) {
+        console.error('Route must have at least 2 places');
+        return;
+    }
+
+    // Create waypoints for the route
+    const waypoints = places.slice(1, -1).map(place => ({
+        location: new google.maps.LatLng(place.coordinates.lat, place.coordinates.lng),
+        stopover: true
+    }));
+
+    const request = {
+        origin: new google.maps.LatLng(places[0].coordinates.lat, places[0].coordinates.lng),
+        destination: new google.maps.LatLng(places[places.length - 1].coordinates.lat, places[places.length - 1].coordinates.lng),
+        waypoints: waypoints,
+        travelMode: google.maps.TravelMode.DRIVING,
+        optimizeWaypoints: false
     };
 
-    map.fitBounds(bounds, padding);
-
-    // Add click listener to map to deselect route
-    map.addListener('click', () => {
-        deselectRoute();
+    directionsService.route(request, (result, status) => {
+        if (status === 'OK') {
+            directionsRenderer.setDirections(result);
+            currentRoute = result;
+        } else {
+            console.error('Directions request failed due to ' + status);
+        }
     });
 }
 
-function displayRouteDetails(route, travelMode, routeIndex, description) {
+// Function to show route details
+function showRouteDetails(routeIndex) {
+    if (!routesData[routeIndex]) {
+        console.error('Route data not found for index:', routeIndex);
+        return;
+    }
+
+    const route = routesData[routeIndex];
     const routeInfo = document.getElementById('routeInfo');
     const routeDetails = document.getElementById('routeDetails');
 
-    // Calculate totals
-    let totalDistance = 0;
-    let totalDuration = 0;
-    route.legs.forEach(leg => {
-        totalDistance += leg.distance.value;
-        totalDuration += leg.duration.value;
-    });
-
     let detailsHtml = `
-        <h6>${description}</h6>
-        <p><strong>Travel Mode:</strong> ${travelMode}</p>
-        <p><strong>Total Distance:</strong> ${formatDistance(totalDistance)}</p>
-        <p><strong>Estimated Duration:</strong> ${formatDuration(totalDuration)}</p>
+        <div class="route-title">${route.route_name}</div>
+        <div class="route-stats">
+            <span><i class="bi bi-geo-alt"></i> ${route.places.length} places</span>
+        </div>
+        <div class="route-legs">
     `;
 
-    // Add details for each leg of the journey
-    route.legs.forEach((leg, index) => {
+    route.places.forEach((place, index) => {
         detailsHtml += `
             <div class="route-leg">
-                <h6>${index === 0 ? 'Start' : 'Via'} ${leg.start_address}</h6>
-                <p><strong>To:</strong> ${leg.end_address}</p>
-                <p><strong>Distance:</strong> ${leg.distance.text}</p>
-                <p><strong>Duration:</strong> ${leg.duration.text}</p>
+                <strong>${index + 1}.</strong> ${place.name}
+                <small class="text-muted">(${place.coordinates.lat.toFixed(4)}, ${place.coordinates.lng.toFixed(4)})</small>
             </div>
         `;
-
-        if (leg.steps && leg.steps.length > 0) {
-            detailsHtml += '<div class="route-steps"><ol>';
-            leg.steps.forEach(step => {
-                detailsHtml += `<li>${step.instructions} (${step.distance.text})</li>`;
-            });
-            detailsHtml += '</ol></div>';
-        }
     });
+
+    detailsHtml += '</div>';
 
     routeDetails.innerHTML = detailsHtml;
     routeInfo.style.display = 'block';
 }
 
+// Function to deselect route
 function deselectRoute() {
-    // Clear route
-    directionsRenderer.setMap(null);
-
-    // Remove active state from route options
+    selectedRouteIndex = null;
     document.querySelectorAll('.route-option').forEach(option => {
         option.classList.remove('active');
     });
-
-    // Reset markers
-    document.querySelectorAll('.custom-marker').forEach(marker => {
-        marker.classList.remove('active');
-    });
-
-    // Hide route details
+    
+    if (directionsRenderer) {
+        directionsRenderer.setDirections({ routes: [] });
+    }
+    
     document.getElementById('routeInfo').style.display = 'none';
-
-    // Fit map to show all markers
-    const bounds = new google.maps.LatLngBounds();
-    markers.forEach(marker => bounds.extend(marker.position));
-    map.fitBounds(bounds);
+    document.getElementById('continueBtn').style.display = 'none';
 }
 
-function highlightRouteMarkers(route) {
-    // Get all locations from the route
-    const routeLocations = new Set();
-    route.legs.forEach(leg => {
-        routeLocations.add(leg.start_location.lat() + ',' + leg.start_location.lng());
-        routeLocations.add(leg.end_location.lat() + ',' + leg.end_location.lng());
-    });
+// Function to continue to next step
+function continueToNextStep() {
+    if (selectedRouteIndex === null) {
+        alert('Please select a route first');
+        return;
+    }
 
-    // Highlight markers that are part of the route
-    markers.forEach(marker => {
-        const position = marker.position;
-        const locationKey = position.lat + ',' + position.lng;
-        if (routeLocations.has(locationKey)) {
-            marker.content.classList.add('active');
-
-            // Create or update info window for the marker
-            const infoWindow = new google.maps.InfoWindow({
-                content: `<strong>${marker.title}</strong>`
-            });
-
-            // Add click listener to marker
-            marker.addListener('gmp-click', () => {
-                infoWindow.open(map, marker);
-            });
+    // Here you can add AJAX call to save the selected route
+    // For now, we'll just redirect to the next step
+    const tourId = {{ $tourId }};
+    const selectedRoute = routesData[selectedRouteIndex];
+    
+    // You can add AJAX call here to save the selected route
+    // Example:
+    /*
+    fetch(`/tour-plan/${tourId}/save-route`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        },
+        body: JSON.stringify({
+            selected_route_index: selectedRouteIndex,
+            selected_route: selectedRoute
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            window.location.href = data.redirect_url;
         }
     });
+    */
+    
+    // For now, just redirect to next step (you can modify this URL as needed)
+    window.location.href = `/tour-plan/${tourId}/step3`;
 }
 
-function getRouteColor(index, type) {
-    const suggestedColors = [
-        '#28a745', // Green
-        '#17a2b8', // Cyan
-        '#6610f2', // Purple
-        '#fd7e14'  // Orange
-    ];
-
-    const defaultColors = [
-        '#007bff', // Blue
-        '#dc3545', // Red
-        '#ffc107', // Yellow
-        '#20c997'  // Teal
-    ];
-
-    if (type === 'suggested') {
-        return suggestedColors[index % suggestedColors.length];
-    }
-    return defaultColors[index % defaultColors.length];
-}
-
-// Load Google Maps API when the page loads
-document.addEventListener('DOMContentLoaded', loadGoogleMapsAPI);
-
-// Add new styles for route groups
-const styleSheet = document.createElement('style');
-styleSheet.textContent = `
-    .route-group {
-        margin-bottom: 20px;
-        padding: 10px;
-        background: #fff;
-        border-radius: 4px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
-    .route-group-title {
-        margin-bottom: 10px;
-        padding-bottom: 5px;
-        border-bottom: 2px solid #007bff;
-        color: #007bff;
-    }
-    .route-group-title.suggested {
-        color: #28a745;
-        border-bottom-color: #28a745;
-    }
-    .route-option {
-        margin: 5px 0;
-    }
-    .route-option:hover {
-        background: #f8f9fa;
-    }
-    .route-option.active {
-        background: #e9ecef;
-    }
-    .route-option.suggested {
-        border-left: 4px solid #28a745;
-    }
-    .route-option.suggested:hover {
-        background: #e8f5e9;
-    }
-    .route-option.suggested.active {
-        background: #c8e6c9;
-    }
-`;
-document.head.appendChild(styleSheet);
-
-// Update the route filter HTML to include all route types
-document.addEventListener('DOMContentLoaded', () => {
-    const routeFilter = document.querySelector('.route-filter');
-    if (routeFilter) {
-        routeFilter.innerHTML = `
-            <select id="travelMode" onchange="updateRouteOptions()">
-                <option value="DRIVING">Driving</option>
-                <option value="WALKING">Walking</option>
-                <option value="BICYCLING">Bicycling</option>
-                <option value="TRANSIT">Transit</option>
-            </select>
-            <select id="routeType" onchange="updateRouteOptions()">
-                <option value="fastest">Fastest Route</option>
-                <option value="avoidHighways">Avoid Highways</option>
-                <option value="avoidTolls">Avoid Tolls</option>
-                <option value="scenic">Scenic Route</option>
-                <option value="all">All Routes</option>
-            </select>
-        `;
-    }
+// Initialize map when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadGoogleMapsAPI();
 });
 </script>
 

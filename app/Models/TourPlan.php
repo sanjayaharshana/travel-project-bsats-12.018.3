@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
+use App\Models\RouteSelector;
 
 class TourPlan extends Model
 {
@@ -75,6 +76,36 @@ class TourPlan extends Model
     public function guest()
     {
         return $this->belongsTo(Guest::class);
+    }
+
+    // Suggested Routes Relationship
+    public function suggestedRoutes()
+    {
+        return $this->belongsTo(RouteSelector::class, 'suggested_routes_id', 'id');
+    }
+
+    // Accessor to get suggested_routes_id from progress_data
+    public function getSuggestedRoutesIdAttribute()
+    {
+        return $this->progress_data['suggested_routes_id'] ?? null;
+    }
+
+    // Mutator to set suggested_routes_id in progress_data
+    public function setSuggestedRoutesIdAttribute($value)
+    {
+        $progressData = $this->progress_data ?? [];
+        $progressData['suggested_routes_id'] = $value;
+        $this->progress_data = $progressData;
+    }
+
+    // Helper method to get suggested routes
+    public function getSuggestedRoutes()
+    {
+        $routesId = $this->suggested_routes_id;
+        if ($routesId) {
+            return RouteSelector::find($routesId);
+        }
+        return null;
     }
 
     // Scopes
