@@ -266,41 +266,41 @@ function loadGoogleMapsAPI() {
 // Initialize the map
 async function initMap() {
     try {
-        const { Map } = await google.maps.importLibrary("maps");
-        const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+    const { Map } = await google.maps.importLibrary("maps");
+    const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
 
-        const mapElement = document.getElementById('map');
+    const mapElement = document.getElementById('map');
         if (!mapElement) {
             console.error('Map element not found');
             return;
         }
 
-        const mapId = mapElement.dataset.mapId;
+    const mapId = mapElement.dataset.mapId;
 
-        map = new Map(mapElement, {
-            mapId: mapId,
-            zoom: 12,
+    map = new Map(mapElement, {
+        mapId: mapId,
+        zoom: 12,
             center: { lat: 6.9271, lng: 79.8612 }, // Default to Colombo
-        });
+    });
 
-        directionsService = new google.maps.DirectionsService();
-        directionsRenderer = new google.maps.DirectionsRenderer({
-            map: map,
-            suppressMarkers: true,
-            polylineOptions: {
-                strokeColor: '#007bff',
-                strokeWeight: 5,
-                strokeOpacity: 0.8
-            }
-        });
+    directionsService = new google.maps.DirectionsService();
+    directionsRenderer = new google.maps.DirectionsRenderer({
+        map: map,
+        suppressMarkers: true,
+        polylineOptions: {
+            strokeColor: '#007bff',
+            strokeWeight: 5,
+            strokeOpacity: 0.8
+        }
+    });
 
-        // Add click listener to map to deselect route
-        map.addListener('click', () => {
-            deselectRoute();
-        });
+    // Add click listener to map to deselect route
+    map.addListener('click', () => {
+        deselectRoute();
+    });
 
-        processTourLocations();
-        await addLocationMarkers(AdvancedMarkerElement);
+    processTourLocations();
+    await addLocationMarkers(AdvancedMarkerElement);
         
         // Show first route by default if available
         if (routesData.length > 0) {
@@ -322,12 +322,12 @@ function processTourLocations() {
 
     // Start location with validation
     if (tourDetails.start_location && tourDetails.start_location.latitude && tourDetails.start_location.longitude) {
-        locations.push({
-            lat: parseFloat(tourDetails.start_location.latitude),
-            lng: parseFloat(tourDetails.start_location.longitude),
+    locations.push({
+        lat: parseFloat(tourDetails.start_location.latitude),
+        lng: parseFloat(tourDetails.start_location.longitude),
             name: tourDetails.start_location.name || 'Start Location',
-            type: 'start'
-        });
+        type: 'start'
+    });
     } else {
         console.warn('Start location data is missing or incomplete');
     }
@@ -374,23 +374,23 @@ async function addLocationMarkers(AdvancedMarkerElement) {
         }
 
         try {
-            const markerContent = createMarkerContent(index + 1, location.type);
-            const marker = new AdvancedMarkerElement({
-                map,
-                position: { lat: location.lat, lng: location.lng },
-                title: location.name,
-                content: markerContent
-            });
+        const markerContent = createMarkerContent(index + 1, location.type);
+        const marker = new AdvancedMarkerElement({
+            map,
+            position: { lat: location.lat, lng: location.lng },
+            title: location.name,
+            content: markerContent
+        });
 
-            const infoWindow = new google.maps.InfoWindow({
-                content: `<strong>${location.name}</strong>`
-            });
+        const infoWindow = new google.maps.InfoWindow({
+            content: `<strong>${location.name}</strong>`
+        });
 
-            marker.addListener('gmp-click', () => {
-                infoWindow.open(map, marker);
-            });
+        marker.addListener('gmp-click', () => {
+            infoWindow.open(map, marker);
+        });
 
-            markers.push(marker);
+        markers.push(marker);
         } catch (error) {
             console.error(`Error creating marker for location ${index}:`, error);
         }
@@ -398,9 +398,9 @@ async function addLocationMarkers(AdvancedMarkerElement) {
 
     // Fit map to show all markers
     if (markers.length > 0) {
-        const bounds = new google.maps.LatLngBounds();
-        markers.forEach(marker => bounds.extend(marker.position));
-        map.fitBounds(bounds);
+    const bounds = new google.maps.LatLngBounds();
+    markers.forEach(marker => bounds.extend(marker.position));
+    map.fitBounds(bounds);
     }
 }
 
@@ -517,7 +517,7 @@ function deselectRoute() {
     document.querySelectorAll('.route-option').forEach(option => {
         option.classList.remove('active');
     });
-    
+
     if (directionsRenderer) {
         directionsRenderer.setDirections({ routes: [] });
     }

@@ -91,6 +91,27 @@
                 color: white;
                 transform: translateY(-2px);
             }
+            /* Create Tour Plan Button */
+            .btn-create-tour {
+                background: linear-gradient(135deg, #28a745, #20c997);
+                color: white;
+                border: none;
+                border-radius: 50px;
+                font-size: 0.9rem;
+                font-weight: 600;
+                padding: 0.4rem 1.2rem;
+                transition: all 0.3s ease;
+                box-shadow: 0 2px 8px rgba(40, 167, 69, 0.3);
+            }
+            .btn-create-tour:hover {
+                background: linear-gradient(135deg, #218838, #1ea085);
+                color: white;
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(40, 167, 69, 0.4);
+            }
+            .btn-create-tour:active {
+                transform: translateY(0);
+            }
             /* Mega Menu Styles */
             .dropdown {
                 position: static;

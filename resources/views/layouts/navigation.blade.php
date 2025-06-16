@@ -173,6 +173,11 @@
             </ul>
             <div class="d-flex gap-2 align-items-center">
                 @if(Auth::check())
+                    <!-- Create Tour Plan Button -->
+                    <a href="{{ route('tourplan.create') }}" class="btn btn-create-tour me-2">
+                        <i class="bi bi-plus-circle me-1"></i>Create Tour Plan
+                    </a>
+                    
                     <div class="dropdown">
                         <a href="#" class="d-flex align-items-center text-decoration-none dropdown-toggle" id="navbarProfileDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                             <img src="{{ Auth::user()->profile_photo_url ?? 'https://ui-avatars.com/api/?name='.urlencode(Auth::user()->name).'&background=0D8ABC&color=fff' }}" alt="{{ Auth::user()->name }}" width="36" height="36" class="rounded-circle me-2">
